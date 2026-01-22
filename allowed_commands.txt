@@ -25,7 +25,7 @@ cat /proc/cpuinfo
 cat /proc/uptime
 cat /etc/os-release
 ping
-arp -a
+arp-scan -l
 ip neigh
 nmap
 curl
