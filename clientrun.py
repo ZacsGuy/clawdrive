@@ -82,7 +82,7 @@ def main():
             buffered.append(msg)
 
     if not printed_commands:
-        safe_print("commands: /reset, /save path.json, /exit")
+        safe_print("commands: /reset, /save path.json, /exit, /sys [question]")
     for msg in buffered:
         handle_message(msg)
 
@@ -123,6 +123,18 @@ def main():
                     print("[error] disconnected")
                     break
                 handle_message(msg)
+                continue
+            if cmd == "/sys":
+                question = rest[0] if rest else "summarize current system info"
+                send_json(writer, {"type": "sys", "content": question})
+                while True:
+                    msg = read_message(reader)
+                    if msg is None:
+                        print("[error] disconnected")
+                        return
+                    handle_message(msg)
+                    if msg.get("type") in ("assistant", "error"):
+                        break
                 continue
             print("unknown command")
             continue

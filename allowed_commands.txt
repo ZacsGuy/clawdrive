@@ -1,0 +1,26 @@
+# allowed commands (exact or prefix)
+uname -a
+uptime
+hostname
+whoami
+id
+date
+pwd
+ls
+ls -la
+lsblk
+df
+df -h
+du -h
+free -h
+ps aux
+top -b -n 1
+ip addr
+ip route
+ss -tulpen
+netstat -tulpen
+lsb_release -a
+cat /proc/meminfo
+cat /proc/cpuinfo
+cat /proc/uptime
+cat /etc/os-release

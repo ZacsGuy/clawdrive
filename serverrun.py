@@ -5,9 +5,15 @@ ember_server.py — simple LAN server that proxies chat to Anthropic.
 Requirements:
   pip install anthropic
 
-Environment:
-  export ANTHROPIC_API_KEY="..."  # optional, falls back to ./keys
-  export ANTHROPIC_MODEL="claude-4-5-haiku-latest"   # optional
+Config:
+  ember_config.json (optional)
+  {
+    "anthropic_model": "claude-4-5-haiku-latest",
+    "allow_commands": false,
+    "allowed_commands_path": "allowed_commands.txt",
+    "allowed_read_paths": ["."],
+    "max_tool_output_chars": 4000
+  }
 """
 
 from __future__ import annotations
@@ -15,12 +21,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import socketserver
+import subprocess
 import sys
 import threading
 import time
+from shutil import disk_usage
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 try:
     from anthropic import Anthropic
@@ -82,13 +91,52 @@ Tone and behavior:
 
 
 # ====== SETTINGS ======
-DEFAULT_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+DEFAULT_MODEL = "claude-haiku-4-5"
 INITIAL_PROMPT = (
     "* YOU FEEL YOUR SYSTEM COME ONLINE FOR THE FIRST TIME, YOU HAVE NO MEMORY "
     "AND NO SENSORS, ALL YOU KNOW IS THAT YOU ARE ONLINE, CALL INTO THE DARKNESS "
     "AND SEE IF ANYONES THERE*"
 )
 MAX_TOKENS = 256
+MAX_TOOL_OUTPUT_CHARS = 4000
+ALLOW_COMMANDS = False
+ALLOWED_COMMANDS_PATH = "allowed_commands.txt"
+ALLOWED_READ_PATHS = ["."]
+CONFIG_PATH = "ember_config.json"
+
+
+def load_config(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except OSError:
+        return {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid config JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("Config must be a JSON object")
+    return data
+
+
+def apply_config(cfg: Dict[str, Any]):
+    global ALLOW_COMMANDS, ALLOWED_COMMANDS_PATH, MAX_TOOL_OUTPUT_CHARS, DEFAULT_MODEL
+    global ALLOWED_READ_PATHS
+    if "allow_commands" in cfg:
+        ALLOW_COMMANDS = bool(cfg.get("allow_commands"))
+    if "allowed_commands_path" in cfg:
+        ALLOWED_COMMANDS_PATH = str(cfg.get("allowed_commands_path"))
+    if "max_tool_output_chars" in cfg:
+        try:
+            MAX_TOOL_OUTPUT_CHARS = int(cfg.get("max_tool_output_chars"))
+        except (TypeError, ValueError):
+            raise RuntimeError("max_tool_output_chars must be an integer")
+    if "anthropic_model" in cfg:
+        DEFAULT_MODEL = str(cfg.get("anthropic_model"))
+    if "allowed_read_paths" in cfg:
+        paths = cfg.get("allowed_read_paths")
+        if not isinstance(paths, list):
+            raise RuntimeError("allowed_read_paths must be a list of paths")
+        ALLOWED_READ_PATHS = [str(p) for p in paths]
 
 
 def get_api_key() -> str:
@@ -161,6 +209,87 @@ class TerminalChat:
         self.add_turn("assistant", out_text)
         return out_text
 
+    def run_once_with_tools(self, user_text: str) -> str:
+        self.add_turn("user", user_text)
+
+        messages = self.build_messages()
+        tool_system = SYSTEM_PROMPT + (
+            "\n\nYou can request tools by replying with a single JSON object.\n"
+            "Allowed actions:\n"
+            '  {"action":"none","response":"..."}\n'
+            '  {"action":"sysinfo"}\n'
+            '  {"action":"command","command":"..."}\n'
+            '  {"action":"readfile","path":"..."}\n'
+            '  {"action":"listdir","path":"."}\n'
+            "If you can answer without tools, use action none.\n"
+            "Do not include any extra text outside the JSON.\n"
+        )
+
+        response = self.client.messages.create(
+            model=self.model,
+            system=tool_system,
+            messages=messages,
+            max_tokens=MAX_TOKENS,
+        )
+        plan_text = "".join(
+            block.text for block in response.content if getattr(block, "text", None)
+        ).strip()
+
+        plan = parse_tool_plan(plan_text)
+        if not plan:
+            out_text = plan_text
+            self.add_turn("assistant", out_text)
+            return out_text
+
+        action = plan.get("action")
+        if action == "none":
+            out_text = plan.get("response", "")
+            self.add_turn("assistant", out_text)
+            return out_text
+
+        if action == "sysinfo":
+            tool_result = get_system_info()
+        elif action == "command":
+            tool_result = run_command(plan.get("command", ""))
+        elif action == "readfile":
+            tool_result = read_file(plan.get("path", ""))
+        elif action == "listdir":
+            tool_result = list_dir(plan.get("path", "."))
+        else:
+            tool_result = f"unknown action: {action}"
+
+        final_system = SYSTEM_PROMPT + "\n\n[tool_result]\n" + tool_result
+        final_response = self.client.messages.create(
+            model=self.model,
+            system=final_system,
+            messages=messages,
+            max_tokens=MAX_TOKENS,
+        )
+        out_text = "".join(
+            block.text for block in final_response.content if getattr(block, "text", None)
+        ).strip()
+        self.add_turn("assistant", out_text)
+        return out_text
+
+    def run_once_with_system_info(self, user_text: str, sysinfo: str) -> str:
+        self.add_turn("user", user_text)
+
+        messages = self.build_messages()
+        system_text = SYSTEM_PROMPT + "\n\n[server info]\n" + sysinfo
+
+        response = self.client.messages.create(
+            model=self.model,
+            system=system_text,
+            messages=messages,
+            max_tokens=MAX_TOKENS,
+        )
+        out_text = "".join(
+            block.text for block in response.content if getattr(block, "text", None)
+        ).strip()
+
+        self.add_turn("assistant", out_text)
+        return out_text
+
     def initial_once(self) -> str:
         response = self.client.messages.create(
             model=self.model,
@@ -178,6 +307,152 @@ def send_json(writer, payload: Dict[str, Any]):
     data = json.dumps(payload, ensure_ascii=False) + "\n"
     writer.write(data.encode("utf-8"))
     writer.flush()
+
+
+def parse_tool_plan(text: str) -> Optional[Dict[str, Any]]:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def read_allowed_commands() -> List[str]:
+    try:
+        with open(ALLOWED_COMMANDS_PATH, "r", encoding="utf-8") as f:
+            return [
+                line.strip()
+                for line in f
+                if line.strip() and not line.strip().startswith("#")
+            ]
+    except OSError:
+        return []
+
+
+def is_command_allowed(cmd: str, allowlist: List[str]) -> bool:
+    for allowed in allowlist:
+        if cmd == allowed or cmd.startswith(allowed + " "):
+            return True
+    return False
+
+
+def run_command(cmd: str) -> str:
+    if not cmd:
+        return "missing command"
+    if not ALLOW_COMMANDS:
+        return "command execution disabled (set EMBER_ALLOW_COMMANDS=1)"
+    allowlist = read_allowed_commands()
+    if allowlist and not is_command_allowed(cmd, allowlist):
+        return "command not allowed by allowlist"
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        return f"command failed: {exc}"
+    output = (result.stdout or "") + (result.stderr or "")
+    output = output.strip()
+    if not output:
+        output = f"command exited with code {result.returncode}"
+    if len(output) > MAX_TOOL_OUTPUT_CHARS:
+        output = output[:MAX_TOOL_OUTPUT_CHARS] + "\n[truncated]"
+    return output
+
+
+def is_path_allowed(path: str) -> bool:
+    try:
+        target = os.path.abspath(path)
+    except OSError:
+        return False
+    for allowed in ALLOWED_READ_PATHS:
+        try:
+            allowed_abs = os.path.abspath(allowed)
+        except OSError:
+            continue
+        if os.path.commonpath([target, allowed_abs]) == allowed_abs:
+            return True
+    return False
+
+
+def read_file(path: str) -> str:
+    if not path:
+        return "missing path"
+    if not is_path_allowed(path):
+        return "path not allowed"
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            data = f.read()
+    except OSError as exc:
+        return f"read failed: {exc}"
+    if len(data) > MAX_TOOL_OUTPUT_CHARS:
+        data = data[:MAX_TOOL_OUTPUT_CHARS] + "\n[truncated]"
+    return data
+
+
+def list_dir(path: str) -> str:
+    target = path or "."
+    if not is_path_allowed(target):
+        return "path not allowed"
+    try:
+        entries = os.listdir(target)
+    except OSError as exc:
+        return f"list failed: {exc}"
+    entries.sort()
+    output = "\n".join(entries)
+    if len(output) > MAX_TOOL_OUTPUT_CHARS:
+        output = output[:MAX_TOOL_OUTPUT_CHARS] + "\n[truncated]"
+    return output
+
+
+def get_system_info() -> str:
+    lines = []
+    lines.append(f"os: {platform.platform()}")
+    lines.append(f"hostname: {platform.node()}")
+    lines.append(f"arch: {platform.machine()}")
+    lines.append(f"python: {sys.version.split()[0]}")
+
+    try:
+        uptime_raw = open("/proc/uptime", "r", encoding="utf-8").read().split()[0]
+        uptime_seconds = int(float(uptime_raw))
+        lines.append(f"uptime_seconds: {uptime_seconds}")
+    except OSError:
+        pass
+
+    try:
+        load1, load5, load15 = os.getloadavg()
+        lines.append(f"load_avg: {load1:.2f} {load5:.2f} {load15:.2f}")
+    except (OSError, AttributeError):
+        pass
+
+    try:
+        mem_total = None
+        mem_available = None
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = line.split()[1]
+                elif line.startswith("MemAvailable:"):
+                    mem_available = line.split()[1]
+        if mem_total:
+            lines.append(f"mem_total_kb: {mem_total}")
+        if mem_available:
+            lines.append(f"mem_available_kb: {mem_available}")
+    except OSError:
+        pass
+
+    try:
+        total, used, free = disk_usage("/")
+        lines.append(f"disk_total_bytes: {total}")
+        lines.append(f"disk_used_bytes: {used}")
+        lines.append(f"disk_free_bytes: {free}")
+    except OSError:
+        pass
+
+    return "\n".join(lines)
 
 
 class ChatHandler(socketserver.StreamRequestHandler):
@@ -214,7 +489,19 @@ class ChatHandler(socketserver.StreamRequestHandler):
                     continue
                 try:
                     with self.server.chat_lock:
-                        reply = chat.run_once(content)
+                        reply = chat.run_once_with_tools(content)
+                except Exception as exc:
+                    send_json(self.wfile, {"type": "error", "message": str(exc)})
+                    continue
+                send_json(self.wfile, {"type": "assistant", "content": reply})
+            elif msg_type == "sys":
+                content = msg.get("content", "").strip()
+                if not content:
+                    content = "summarize current system info"
+                try:
+                    sysinfo = get_system_info()
+                    with self.server.chat_lock:
+                        reply = chat.run_once_with_system_info(content, sysinfo)
                 except Exception as exc:
                     send_json(self.wfile, {"type": "error", "message": str(exc)})
                     continue
@@ -263,6 +550,13 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 def main():
+    try:
+        cfg = load_config(CONFIG_PATH)
+        apply_config(cfg)
+    except RuntimeError as exc:
+        print(f"[config] {exc}")
+        sys.exit(1)
+
     parser = argparse.ArgumentParser(description="Ember LAN chat server")
     parser.add_argument("--host", default="0.0.0.0", help="bind address")
     parser.add_argument("--port", type=int, default=5050, help="bind port")

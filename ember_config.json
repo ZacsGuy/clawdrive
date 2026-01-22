@@ -1,0 +1,7 @@
+{
+  "anthropic_model": "claude-haiku-4-5",
+  "allow_commands": true,
+  "allowed_commands_path": "allowed_commands.txt",
+  "allowed_read_paths": [".", "/var/log", "/home/ubuntu"],
+  "max_tool_output_chars": 4000
+}
