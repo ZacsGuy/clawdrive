@@ -24,6 +24,11 @@ cat /proc/meminfo
 cat /proc/cpuinfo
 cat /proc/uptime
 cat /etc/os-release
+ping
+arp -a
+ip neigh
+nmap
+curl
 mkdir
 touch
 echo
