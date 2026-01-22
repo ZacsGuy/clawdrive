@@ -17,23 +17,42 @@ def send_json(writer, payload):
     writer.flush()
 
 
+STDOUT_LOCK = threading.Lock()
+
+
+def safe_print(text=""):
+    with STDOUT_LOCK:
+        print(text)
+
+
+def show_prompt():
+    with STDOUT_LOCK:
+        sys.stdout.write("> ")
+        sys.stdout.flush()
+
+
 def handle_message(msg):
     msg_type = msg.get("type")
     if msg_type == "assistant":
         content = msg.get("content", "")
-        print("\n")
-        print(content if content else "(silence)")
-        print("\n")
+        safe_print("")
+        safe_print(content if content else "(silence)")
+        safe_print("")
+        show_prompt()
     elif msg_type == "info":
-        print(f"[info] {msg.get('message', '')}")
+        safe_print(f"[info] {msg.get('message', '')}")
+        show_prompt()
     elif msg_type == "error":
-        print(f"[error] {msg.get('message', '')}")
+        safe_print(f"[error] {msg.get('message', '')}")
+        show_prompt()
     elif msg_type == "saved":
-        print(f"[saved] {msg.get('path', '')}")
+        safe_print(f"[saved] {msg.get('path', '')}")
+        show_prompt()
     elif msg_type == "ready":
         pass
     else:
-        print("[info] message received")
+        safe_print("[info] message received")
+        show_prompt()
 
 
 def recv_loop(reader, stop_event):
@@ -63,6 +82,8 @@ def main():
     reader = sock.makefile("r", encoding="utf-8")
     writer = sock.makefile("w", encoding="utf-8")
 
+    buffered = []
+    printed_commands = False
     while True:
         line = reader.readline()
         if not line:
@@ -75,15 +96,29 @@ def main():
             continue
         if msg.get("type") == "ready":
             break
+        if msg.get("type") == "info" and msg.get("message") == "connected":
+            handle_message(msg)
+            if not printed_commands:
+                safe_print("commands: /reset, /save path.json, /exit")
+                printed_commands = True
+        else:
+            buffered.append(msg)
+
+    if not printed_commands:
+        safe_print("commands: /reset, /save path.json, /exit")
+    for msg in buffered:
         handle_message(msg)
     stop_event = threading.Event()
     thread = threading.Thread(target=recv_loop, args=(reader, stop_event), daemon=True)
     thread.start()
 
-    print("commands: /reset, /save path.json, /exit")
     while True:
         try:
-            user_text = input("> ").strip()
+            show_prompt()
+            user_text = sys.stdin.readline()
+            if not user_text:
+                user_text = "/exit"
+            user_text = user_text.strip()
         except (EOFError, KeyboardInterrupt):
             user_text = "/exit"
 
