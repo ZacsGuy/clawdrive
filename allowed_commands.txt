@@ -27,4 +27,4 @@ cat /etc/os-release
 mkdir
 touch
 echo
-
+find
