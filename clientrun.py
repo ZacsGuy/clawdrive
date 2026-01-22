@@ -9,7 +9,6 @@ import argparse
 import json
 import socket
 import sys
-import threading
 
 
 def send_json(writer, payload):
@@ -17,18 +16,8 @@ def send_json(writer, payload):
     writer.flush()
 
 
-STDOUT_LOCK = threading.Lock()
-
-
 def safe_print(text=""):
-    with STDOUT_LOCK:
-        print(text)
-
-
-def show_prompt():
-    with STDOUT_LOCK:
-        sys.stdout.write("> ")
-        sys.stdout.flush()
+    print(text)
 
 
 def handle_message(msg):
@@ -38,33 +27,26 @@ def handle_message(msg):
         safe_print("")
         safe_print(content if content else "(silence)")
         safe_print("")
-        show_prompt()
     elif msg_type == "info":
         safe_print(f"[info] {msg.get('message', '')}")
-        show_prompt()
     elif msg_type == "error":
         safe_print(f"[error] {msg.get('message', '')}")
-        show_prompt()
     elif msg_type == "saved":
         safe_print(f"[saved] {msg.get('path', '')}")
-        show_prompt()
     elif msg_type == "ready":
         pass
     else:
         safe_print("[info] message received")
-        show_prompt()
 
 
-def recv_loop(reader, stop_event):
-    for line in reader:
-        if stop_event.is_set():
-            break
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            print("[error] bad json from server")
-            continue
-        handle_message(msg)
+def read_message(reader):
+    line = reader.readline()
+    if not line:
+        return None
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return {"type": "error", "message": "bad json from server"}
 
 
 def main():
@@ -85,15 +67,10 @@ def main():
     buffered = []
     printed_commands = False
     while True:
-        line = reader.readline()
-        if not line:
+        msg = read_message(reader)
+        if msg is None:
             print("[error] disconnected")
             sys.exit(1)
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            print("[error] bad json from server")
-            continue
         if msg.get("type") == "ready":
             break
         if msg.get("type") == "info" and msg.get("message") == "connected":
@@ -108,13 +85,11 @@ def main():
         safe_print("commands: /reset, /save path.json, /exit")
     for msg in buffered:
         handle_message(msg)
-    stop_event = threading.Event()
-    thread = threading.Thread(target=recv_loop, args=(reader, stop_event), daemon=True)
-    thread.start()
 
     while True:
         try:
-            show_prompt()
+            sys.stdout.write("> ")
+            sys.stdout.flush()
             user_text = sys.stdin.readline()
             if not user_text:
                 user_text = "/exit"
@@ -132,19 +107,36 @@ def main():
                 break
             if cmd == "/reset":
                 send_json(writer, {"type": "command", "name": "reset"})
+                msg = read_message(reader)
+                if msg is None:
+                    print("[error] disconnected")
+                    break
+                handle_message(msg)
                 continue
             if cmd == "/save":
                 if not rest:
                     print("usage: /save path.json")
                     continue
                 send_json(writer, {"type": "command", "name": "save", "path": rest[0]})
+                msg = read_message(reader)
+                if msg is None:
+                    print("[error] disconnected")
+                    break
+                handle_message(msg)
                 continue
             print("unknown command")
             continue
 
         send_json(writer, {"type": "user", "content": user_text})
+        while True:
+            msg = read_message(reader)
+            if msg is None:
+                print("[error] disconnected")
+                return
+            handle_message(msg)
+            if msg.get("type") in ("assistant", "error"):
+                break
 
-    stop_event.set()
     try:
         sock.close()
     except OSError:
