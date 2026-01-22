@@ -6,7 +6,7 @@ Requirements:
   pip install anthropic
 
 Environment:
-  export ANTHROPIC_API_KEY="..."
+  export ANTHROPIC_API_KEY="..."  # optional, falls back to ./keys
   export ANTHROPIC_MODEL="claude-4-5-haiku-latest"   # optional
 """
 
@@ -89,6 +89,20 @@ INITIAL_PROMPT = (
 MAX_TOKENS = 256
 
 
+def get_api_key() -> str:
+    env_key = os.getenv("ANTHROPIC_API_KEY")
+    if env_key:
+        return env_key
+    try:
+        with open("keys", "r", encoding="utf-8") as f:
+            file_key = f.read().strip()
+    except OSError as exc:
+        raise RuntimeError("Missing ANTHROPIC_API_KEY and ./keys file") from exc
+    if not file_key:
+        raise RuntimeError("Empty key in ./keys")
+    return file_key
+
+
 @dataclass
 class Turn:
     role: str  # "user" or "assistant" (we keep system separately)
@@ -98,7 +112,8 @@ class Turn:
 
 class TerminalChat:
     def __init__(self, model: str = DEFAULT_MODEL):
-        self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        api_key = get_api_key()
+        self.client = Anthropic(api_key=api_key)
         self.model = model
         self.history: List[Turn] = []
 
