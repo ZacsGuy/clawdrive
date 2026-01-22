@@ -193,6 +193,7 @@ class ChatHandler(socketserver.StreamRequestHandler):
                     self.wfile,
                     {"type": "assistant", "content": initial},
                 )
+        send_json(self.wfile, {"type": "ready"})
 
         for line in self.rfile:
             try:

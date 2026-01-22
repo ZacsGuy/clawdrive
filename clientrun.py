@@ -17,6 +17,25 @@ def send_json(writer, payload):
     writer.flush()
 
 
+def handle_message(msg):
+    msg_type = msg.get("type")
+    if msg_type == "assistant":
+        content = msg.get("content", "")
+        print("\n")
+        print(content if content else "(silence)")
+        print("\n")
+    elif msg_type == "info":
+        print(f"[info] {msg.get('message', '')}")
+    elif msg_type == "error":
+        print(f"[error] {msg.get('message', '')}")
+    elif msg_type == "saved":
+        print(f"[saved] {msg.get('path', '')}")
+    elif msg_type == "ready":
+        pass
+    else:
+        print("[info] message received")
+
+
 def recv_loop(reader, stop_event):
     for line in reader:
         if stop_event.is_set():
@@ -26,21 +45,7 @@ def recv_loop(reader, stop_event):
         except json.JSONDecodeError:
             print("[error] bad json from server")
             continue
-
-        msg_type = msg.get("type")
-        if msg_type == "assistant":
-            content = msg.get("content", "")
-            print("\n")
-            print(content if content else "(silence)")
-            print("\n")
-        elif msg_type == "info":
-            print(f"[info] {msg.get('message', '')}")
-        elif msg_type == "error":
-            print(f"[error] {msg.get('message', '')}")
-        elif msg_type == "saved":
-            print(f"[saved] {msg.get('path', '')}")
-        else:
-            print("[info] message received")
+        handle_message(msg)
 
 
 def main():
@@ -57,6 +62,20 @@ def main():
 
     reader = sock.makefile("r", encoding="utf-8")
     writer = sock.makefile("w", encoding="utf-8")
+
+    while True:
+        line = reader.readline()
+        if not line:
+            print("[error] disconnected")
+            sys.exit(1)
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            print("[error] bad json from server")
+            continue
+        if msg.get("type") == "ready":
+            break
+        handle_message(msg)
     stop_event = threading.Event()
     thread = threading.Thread(target=recv_loop, args=(reader, stop_event), daemon=True)
     thread.start()
