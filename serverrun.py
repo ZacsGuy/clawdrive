@@ -202,6 +202,8 @@ class TerminalChat:
     def build_messages(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         for t in self.history:
+            if not t.content:
+                continue
             items.append({"role": t.role, "content": t.content})
         return items
 
