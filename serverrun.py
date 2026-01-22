@@ -222,7 +222,7 @@ class TerminalChat:
             '  {"action":"readfile","path":"..."}\n'
             '  {"action":"listdir","path":"."}\n'
             "If you can answer without tools, use action none.\n"
-            "Do not include any extra text outside the JSON.\n"
+            "Do not include any extra text, markdown, or code fences outside the JSON.\n"
         )
 
         response = self.client.messages.create(
@@ -310,8 +310,16 @@ def send_json(writer, payload: Dict[str, Any]):
 
 
 def parse_tool_plan(text: str) -> Optional[Dict[str, Any]]:
+    raw = text.strip()
+    if not raw:
+        return None
+    if raw.startswith("```"):
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            raw = raw[start : end + 1].strip()
     try:
-        return json.loads(text)
+        return json.loads(raw)
     except json.JSONDecodeError:
         return None
 
