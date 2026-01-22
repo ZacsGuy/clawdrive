@@ -231,6 +231,7 @@ class TerminalChat:
             '  {"action":"command","command":"..."}\n'
             '  {"action":"readfile","path":"..."}\n'
             '  {"action":"listdir","path":"."}\n'
+            f"Command execution allowed: {ALLOW_COMMANDS}.\n"
             "If you can answer without tools, use action none.\n"
             "Do not include any extra text, markdown, or code fences outside the JSON.\n"
         )
@@ -270,11 +271,15 @@ class TerminalChat:
             tool_result = f"unknown action: {action}"
         vlog(f"tool result: {tool_result[:400]}")
 
-        final_system = SYSTEM_PROMPT + "\n\n[tool_result]\n" + tool_result
+        final_system = (
+            SYSTEM_PROMPT
+            + "\n\nYou executed a tool on the server. Use the tool_result below."
+        )
+        final_messages = messages + [{"role": "user", "content": f"[tool_result]\n{tool_result}"}]
         final_response = self.client.messages.create(
             model=self.model,
             system=final_system,
-            messages=messages,
+            messages=final_messages,
             max_tokens=MAX_TOKENS,
         )
         out_text = "".join(
