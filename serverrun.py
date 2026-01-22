@@ -103,6 +103,7 @@ ALLOW_COMMANDS = False
 ALLOWED_COMMANDS_PATH = "allowed_commands.txt"
 ALLOWED_READ_PATHS = ["."]
 CONFIG_PATH = "ember_config.json"
+VERBOSE = True
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -137,6 +138,14 @@ def apply_config(cfg: Dict[str, Any]):
         if not isinstance(paths, list):
             raise RuntimeError("allowed_read_paths must be a list of paths")
         ALLOWED_READ_PATHS = [str(p) for p in paths]
+    if "verbose" in cfg:
+        global VERBOSE
+        VERBOSE = bool(cfg.get("verbose"))
+
+
+def vlog(message: str):
+    if VERBOSE:
+        print(f"[server] {message}")
 
 
 def get_api_key() -> str:
@@ -213,6 +222,7 @@ class TerminalChat:
         self.add_turn("user", user_text)
 
         messages = self.build_messages()
+        vlog(f"user: {user_text}")
         tool_system = SYSTEM_PROMPT + (
             "\n\nYou can request tools by replying with a single JSON object.\n"
             "Allowed actions:\n"
@@ -234,6 +244,7 @@ class TerminalChat:
         plan_text = "".join(
             block.text for block in response.content if getattr(block, "text", None)
         ).strip()
+        vlog(f"plan response: {plan_text[:400]}")
 
         plan = parse_tool_plan(plan_text)
         if not plan:
@@ -257,6 +268,7 @@ class TerminalChat:
             tool_result = list_dir(plan.get("path", "."))
         else:
             tool_result = f"unknown action: {action}"
+        vlog(f"tool result: {tool_result[:400]}")
 
         final_system = SYSTEM_PROMPT + "\n\n[tool_result]\n" + tool_result
         final_response = self.client.messages.create(
@@ -268,6 +280,7 @@ class TerminalChat:
         out_text = "".join(
             block.text for block in final_response.content if getattr(block, "text", None)
         ).strip()
+        vlog(f"final response: {out_text[:400]}")
         self.add_turn("assistant", out_text)
         return out_text
 
@@ -311,16 +324,22 @@ def send_json(writer, payload: Dict[str, Any]):
 
 def parse_tool_plan(text: str) -> Optional[Dict[str, Any]]:
     raw = text.strip()
+    vlog(f"plan raw: {raw[:400]}")
     if not raw:
+        vlog("plan parse: empty")
         return None
     if raw.startswith("```"):
         start = raw.find("{")
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
             raw = raw[start : end + 1].strip()
+            vlog(f"plan extracted json: {raw}")
     try:
-        return json.loads(raw)
+        plan = json.loads(raw)
+        vlog(f"plan parsed: {plan}")
+        return plan
     except json.JSONDecodeError:
+        vlog("plan parse: failed json")
         return None
 
 
@@ -347,10 +366,11 @@ def run_command(cmd: str) -> str:
     if not cmd:
         return "missing command"
     if not ALLOW_COMMANDS:
-        return "command execution disabled (set EMBER_ALLOW_COMMANDS=1)"
+        return "command execution disabled (set allow_commands in ember_config.json)"
     allowlist = read_allowed_commands()
     if allowlist and not is_command_allowed(cmd, allowlist):
         return "command not allowed by allowlist"
+    vlog(f"exec: {cmd}")
     try:
         result = subprocess.run(
             cmd,
@@ -364,6 +384,7 @@ def run_command(cmd: str) -> str:
         return f"command failed: {exc}"
     output = (result.stdout or "") + (result.stderr or "")
     output = output.strip()
+    vlog(f"exec exit: {result.returncode}")
     if not output:
         output = f"command exited with code {result.returncode}"
     if len(output) > MAX_TOOL_OUTPUT_CHARS:
@@ -391,6 +412,7 @@ def read_file(path: str) -> str:
         return "missing path"
     if not is_path_allowed(path):
         return "path not allowed"
+    vlog(f"readfile: {path}")
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             data = f.read()
@@ -405,6 +427,7 @@ def list_dir(path: str) -> str:
     target = path or "."
     if not is_path_allowed(target):
         return "path not allowed"
+    vlog(f"listdir: {target}")
     try:
         entries = os.listdir(target)
     except OSError as exc:
