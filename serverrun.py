@@ -158,7 +158,8 @@ class TerminalChat:
 
 
 def send_json(writer, payload: Dict[str, Any]):
-    writer.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    data = json.dumps(payload, ensure_ascii=False) + "\n"
+    writer.write(data.encode("utf-8"))
     writer.flush()
 
 
