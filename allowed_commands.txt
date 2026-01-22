@@ -24,3 +24,5 @@ cat /proc/meminfo
 cat /proc/cpuinfo
 cat /proc/uptime
 cat /etc/os-release
+mkdir
+touch
