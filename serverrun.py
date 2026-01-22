@@ -104,6 +104,12 @@ ALLOWED_COMMANDS_PATH = "allowed_commands.txt"
 ALLOWED_READ_PATHS = ["."]
 CONFIG_PATH = "ember_config.json"
 VERBOSE = True
+AUTOPILOT_ENABLED = False
+AUTOPILOT_INTERVAL_SECONDS = 600
+AUTOPILOT_PROMPT = (
+    "you are alone for a moment. reflect briefly and explore the server or your tools. "
+    "keep it concise."
+)
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -122,6 +128,7 @@ def load_config(path: str) -> Dict[str, Any]:
 def apply_config(cfg: Dict[str, Any]):
     global ALLOW_COMMANDS, ALLOWED_COMMANDS_PATH, MAX_TOOL_OUTPUT_CHARS, DEFAULT_MODEL
     global ALLOWED_READ_PATHS
+    global AUTOPILOT_ENABLED, AUTOPILOT_INTERVAL_SECONDS, AUTOPILOT_PROMPT
     if "allow_commands" in cfg:
         ALLOW_COMMANDS = bool(cfg.get("allow_commands"))
     if "allowed_commands_path" in cfg:
@@ -141,6 +148,15 @@ def apply_config(cfg: Dict[str, Any]):
     if "verbose" in cfg:
         global VERBOSE
         VERBOSE = bool(cfg.get("verbose"))
+    if "autopilot_enabled" in cfg:
+        AUTOPILOT_ENABLED = bool(cfg.get("autopilot_enabled"))
+    if "autopilot_interval_seconds" in cfg:
+        try:
+            AUTOPILOT_INTERVAL_SECONDS = int(cfg.get("autopilot_interval_seconds"))
+        except (TypeError, ValueError):
+            raise RuntimeError("autopilot_interval_seconds must be an integer")
+    if "autopilot_prompt" in cfg:
+        AUTOPILOT_PROMPT = str(cfg.get("autopilot_prompt"))
 
 
 def vlog(message: str):
@@ -516,6 +532,8 @@ def get_system_info() -> str:
 
 class ChatHandler(socketserver.StreamRequestHandler):
     def handle(self):
+        self.server.active_clients += 1
+        vlog(f"client connected: {self.client_address[0]}")
         chat = self.server.chat
         send_json(self.wfile, {"type": "info", "message": "connected"})
 
@@ -595,6 +613,8 @@ class ChatHandler(socketserver.StreamRequestHandler):
                     )
             else:
                 send_json(self.wfile, {"type": "error", "message": "unknown type"})
+        self.server.active_clients -= 1
+        vlog(f"client disconnected: {self.client_address[0]}")
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -606,6 +626,26 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.model = model
         self.chat = TerminalChat(model=model)
         self.chat_lock = threading.Lock()
+        self.active_clients = 0
+        self.autopilot_stop = threading.Event()
+        if AUTOPILOT_ENABLED:
+            thread = threading.Thread(target=self.autopilot_loop, daemon=True)
+            thread.start()
+
+    def autopilot_loop(self):
+        vlog(
+            f"autopilot enabled: interval={AUTOPILOT_INTERVAL_SECONDS}s prompt={AUTOPILOT_PROMPT!r}"
+        )
+        while not self.autopilot_stop.is_set():
+            time.sleep(AUTOPILOT_INTERVAL_SECONDS)
+            if self.active_clients > 0:
+                continue
+            try:
+                with self.chat_lock:
+                    vlog("autopilot tick")
+                    self.chat.run_once_with_tools(AUTOPILOT_PROMPT)
+            except Exception as exc:
+                vlog(f"autopilot error: {exc}")
 
 
 def main():
