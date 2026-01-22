@@ -26,3 +26,5 @@ cat /proc/uptime
 cat /etc/os-release
 mkdir
 touch
+echo
+
