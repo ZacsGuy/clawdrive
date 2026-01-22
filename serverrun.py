@@ -17,6 +17,7 @@ import json
 import os
 import socketserver
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List
@@ -180,7 +181,7 @@ def send_json(writer, payload: Dict[str, Any]):
 
 class ChatHandler(socketserver.StreamRequestHandler):
     def handle(self):
-        chat = TerminalChat(model=self.server.model)
+        chat = self.server.chat
         send_json(self.wfile, {"type": "info", "message": "connected"})
 
         if INITIAL_PROMPT:
@@ -211,7 +212,8 @@ class ChatHandler(socketserver.StreamRequestHandler):
                     )
                     continue
                 try:
-                    reply = chat.run_once(content)
+                    with self.server.chat_lock:
+                        reply = chat.run_once(content)
                 except Exception as exc:
                     send_json(self.wfile, {"type": "error", "message": str(exc)})
                     continue
@@ -219,8 +221,9 @@ class ChatHandler(socketserver.StreamRequestHandler):
             elif msg_type == "command":
                 name = msg.get("name")
                 if name == "reset":
-                    chat.reset()
-                    send_json(self.wfile, {"type": "info", "message": "reset ok"})
+                    with self.server.chat_lock:
+                        chat.reset()
+                        send_json(self.wfile, {"type": "info", "message": "reset ok"})
                 elif name == "save":
                     path = msg.get("path")
                     if not path:
@@ -230,7 +233,8 @@ class ChatHandler(socketserver.StreamRequestHandler):
                         )
                         continue
                     try:
-                        chat.save(path)
+                        with self.server.chat_lock:
+                            chat.save(path)
                     except Exception as exc:
                         send_json(self.wfile, {"type": "error", "message": str(exc)})
                     else:
@@ -253,6 +257,8 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     def __init__(self, server_address, handler_class, model: str):
         super().__init__(server_address, handler_class)
         self.model = model
+        self.chat = TerminalChat(model=model)
+        self.chat_lock = threading.Lock()
 
 
 def main():
