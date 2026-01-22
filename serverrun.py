@@ -589,6 +589,17 @@ class ChatHandler(socketserver.StreamRequestHandler):
                     with self.server.chat_lock:
                         chat.reset()
                         send_json(self.wfile, {"type": "info", "message": "reset ok"})
+                elif name == "reload":
+                    try:
+                        cfg = load_config(CONFIG_PATH)
+                        apply_config(cfg)
+                        self.server.chat.model = DEFAULT_MODEL
+                    except RuntimeError as exc:
+                        send_json(self.wfile, {"type": "error", "message": str(exc)})
+                    else:
+                        send_json(
+                            self.wfile, {"type": "info", "message": "config reloaded"}
+                        )
                 elif name == "save":
                     path = msg.get("path")
                     if not path:
@@ -628,15 +639,17 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.chat_lock = threading.Lock()
         self.active_clients = 0
         self.autopilot_stop = threading.Event()
-        if AUTOPILOT_ENABLED:
-            thread = threading.Thread(target=self.autopilot_loop, daemon=True)
-            thread.start()
+        self.autopilot_thread = threading.Thread(
+            target=self.autopilot_loop, daemon=True
+        )
+        self.autopilot_thread.start()
 
     def autopilot_loop(self):
-        vlog(
-            f"autopilot enabled: interval={AUTOPILOT_INTERVAL_SECONDS}s prompt={AUTOPILOT_PROMPT!r}"
-        )
+        vlog("autopilot loop started")
         while not self.autopilot_stop.is_set():
+            if not AUTOPILOT_ENABLED:
+                time.sleep(5)
+                continue
             time.sleep(AUTOPILOT_INTERVAL_SECONDS)
             if self.active_clients > 0:
                 continue

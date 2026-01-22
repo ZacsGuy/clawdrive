@@ -82,7 +82,7 @@ def main():
             buffered.append(msg)
 
     if not printed_commands:
-        safe_print("commands: /reset, /save path.json, /exit, /sys [question]")
+        safe_print("commands: /reset, /save path.json, /reload, /exit, /sys [question]")
     for msg in buffered:
         handle_message(msg)
 
@@ -107,6 +107,14 @@ def main():
                 break
             if cmd == "/reset":
                 send_json(writer, {"type": "command", "name": "reset"})
+                msg = read_message(reader)
+                if msg is None:
+                    print("[error] disconnected")
+                    break
+                handle_message(msg)
+                continue
+            if cmd == "/reload":
+                send_json(writer, {"type": "command", "name": "reload"})
                 msg = read_message(reader)
                 if msg is None:
                     print("[error] disconnected")
