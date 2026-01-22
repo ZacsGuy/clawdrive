@@ -594,6 +594,7 @@ class ChatHandler(socketserver.StreamRequestHandler):
                         cfg = load_config(CONFIG_PATH)
                         apply_config(cfg)
                         self.server.chat.model = DEFAULT_MODEL
+                        self.server.autopilot_wake.set()
                     except RuntimeError as exc:
                         send_json(self.wfile, {"type": "error", "message": str(exc)})
                     else:
@@ -639,6 +640,7 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.chat_lock = threading.Lock()
         self.active_clients = 0
         self.autopilot_stop = threading.Event()
+        self.autopilot_wake = threading.Event()
         self.autopilot_thread = threading.Thread(
             target=self.autopilot_loop, daemon=True
         )
@@ -648,9 +650,11 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         vlog("autopilot loop started")
         while not self.autopilot_stop.is_set():
             if not AUTOPILOT_ENABLED:
-                time.sleep(5)
+                self.autopilot_wake.wait(timeout=5)
+                self.autopilot_wake.clear()
                 continue
-            time.sleep(AUTOPILOT_INTERVAL_SECONDS)
+            self.autopilot_wake.wait(timeout=AUTOPILOT_INTERVAL_SECONDS)
+            self.autopilot_wake.clear()
             if self.active_clients > 0:
                 continue
             try:

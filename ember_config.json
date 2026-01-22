@@ -3,7 +3,7 @@
   "allow_commands": true,
   "allowed_commands_path": "allowed_commands.txt",
   "allowed_read_paths": [".", "/var/log", "/home/ubuntu"],
-  "max_tool_output_chars": 30,
+  "max_tool_output_chars": 2000,
   "verbose": true,
   "autopilot_enabled": true,
   "autopilot_interval_seconds": 30,

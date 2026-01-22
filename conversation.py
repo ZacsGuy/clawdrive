@@ -154,7 +154,7 @@ class TerminalChat:
         print("[connection] Attempting to connect...")
         print("[connection] Connected to 192.168.1.149")
         print(f"\nModel: Experimental")
-        print("commands: /reset, /save path.json, /exit")
+        print("commands: /reset, /save path.json, /exit, /reload")
         print("-" * 50)
         if INITIAL_PROMPT:
             # Prompt the model once without affecting conversation history.
