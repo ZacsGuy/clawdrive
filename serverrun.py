@@ -328,19 +328,42 @@ def parse_tool_plan(text: str) -> Optional[Dict[str, Any]]:
     if not raw:
         vlog("plan parse: empty")
         return None
+    candidates = []
     if raw.startswith("```"):
         start = raw.find("{")
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
-            raw = raw[start : end + 1].strip()
-            vlog(f"plan extracted json: {raw}")
-    try:
-        plan = json.loads(raw)
-        vlog(f"plan parsed: {plan}")
-        return plan
-    except json.JSONDecodeError:
-        vlog("plan parse: failed json")
-        return None
+            candidates.append(raw[start : end + 1].strip())
+    candidates.append(raw)
+
+    for candidate in candidates:
+        try:
+            plan = json.loads(candidate)
+            vlog(f"plan parsed: {plan}")
+            return plan
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: extract first JSON object by brace matching
+    start = raw.find("{")
+    if start != -1:
+        depth = 0
+        for i in range(start, len(raw)):
+            if raw[i] == "{":
+                depth += 1
+            elif raw[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    snippet = raw[start : i + 1]
+                    try:
+                        plan = json.loads(snippet)
+                        vlog(f"plan parsed (snippet): {plan}")
+                        return plan
+                    except json.JSONDecodeError:
+                        break
+
+    vlog("plan parse: failed json")
+    return None
 
 
 def read_allowed_commands() -> List[str]:
