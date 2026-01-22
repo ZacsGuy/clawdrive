@@ -6,6 +6,6 @@
   "max_tool_output_chars": 2000,
   "verbose": true,
   "autopilot_enabled": true,
-  "autopilot_interval_seconds": 30,
+  "autopilot_interval_seconds": 300,
   "autopilot_prompt": "you are alone for a moment. reflect briefly and explore the server or your tools. keep it concise."
 }
