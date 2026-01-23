@@ -5,6 +5,7 @@
   "allowed_read_paths": [".", "/var/log", "/home/ubuntu"],
   "max_tool_output_chars": 2000,
   "verbose": true,
+  "verbose_all": false,
   "autopilot_enabled": true,
   "autopilot_interval_seconds": 300,
   "autopilot_prompt": "you are alone for a moment. reflect briefly and explore the server or your tools. keep it concise."

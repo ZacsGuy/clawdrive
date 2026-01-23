@@ -117,6 +117,7 @@ ALLOWED_COMMANDS_PATH = "allowed_commands.txt"
 ALLOWED_READ_PATHS = ["."]
 CONFIG_PATH = "ember_config.json"
 VERBOSE = True
+VERBOSE_ALL = False
 AUTOPILOT_ENABLED = False
 AUTOPILOT_INTERVAL_SECONDS = 600
 AUTOPILOT_PROMPT = (
@@ -161,6 +162,9 @@ def apply_config(cfg: Dict[str, Any]):
     if "verbose" in cfg:
         global VERBOSE
         VERBOSE = bool(cfg.get("verbose"))
+    if "verbose_all" in cfg:
+        global VERBOSE_ALL
+        VERBOSE_ALL = bool(cfg.get("verbose_all"))
     if "autopilot_enabled" in cfg:
         AUTOPILOT_ENABLED = bool(cfg.get("autopilot_enabled"))
     if "autopilot_interval_seconds" in cfg:
@@ -175,6 +179,11 @@ def apply_config(cfg: Dict[str, Any]):
 def vlog(message: str):
     if VERBOSE:
         print(f"[server] {message}")
+
+
+def vlog_all(label: str, text: str):
+    if VERBOSE_ALL:
+        print(f"[server][full] {label}:\n{text}\n[server][full] end {label}")
 
 
 def get_api_key() -> str:
@@ -277,6 +286,7 @@ class TerminalChat:
             block.text for block in response.content if getattr(block, "text", None)
         ).strip()
         vlog(f"plan response: {plan_text[:400]}")
+        vlog_all("plan_response", plan_text)
 
         plan = parse_tool_plan(plan_text)
         if not plan:
@@ -290,6 +300,7 @@ class TerminalChat:
             self.add_turn("assistant", out_text)
             return out_text
 
+        vlog(f"tool action: {action}")
         if action == "sysinfo":
             tool_result = get_system_info()
         elif action == "command":
@@ -301,6 +312,7 @@ class TerminalChat:
         else:
             tool_result = f"unknown action: {action}"
         vlog(f"tool result: {tool_result[:400]}")
+        vlog_all("tool_result", tool_result)
 
         final_system = (
             SYSTEM_PROMPT
@@ -317,6 +329,7 @@ class TerminalChat:
             block.text for block in final_response.content if getattr(block, "text", None)
         ).strip()
         vlog(f"final response: {out_text[:400]}")
+        vlog_all("final_response", out_text)
         self.add_turn("assistant", out_text)
         return out_text
 
