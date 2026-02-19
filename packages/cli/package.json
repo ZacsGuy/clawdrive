@@ -1,0 +1,32 @@
+{
+  "name": "@clawdrive/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "clawdrive": "./dist/clawdrive.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "bundle": "tsup --config tsup.bundle.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clawdrive/sdk": "workspace:*",
+    "@clawdrive/shared": "workspace:*",
+    "chalk": "^5.4.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.0.0",
+    "conf": "^13.0.0",
+    "inquirer": "^12.0.0",
+    "open": "^10.0.0",
+    "ora": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
