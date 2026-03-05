@@ -1,0 +1,20 @@
+import { defineConfig } from "tsup";
+
+export default defineConfig([
+  {
+    entry: ["src/bin/agentdrop.ts"],
+    format: ["esm"],
+    dts: true,
+    clean: true,
+    sourcemap: true,
+    banner: {
+      js: "#!/usr/bin/env node\n",
+    },
+  },
+  {
+    entry: ["src/index.ts"],
+    format: ["esm"],
+    dts: true,
+    sourcemap: true,
+  },
+]);
