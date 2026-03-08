@@ -1,5 +1,8 @@
 import styles from "./docs.module.css";
 
+const GITHUB_URL = "https://github.com/ZacsGuy/clawdrive.git";
+const CONTACT_ADDRESS = "2bzEBmj2BoMpw15hJi2LiNjKm5mmbNA57RijVRGbpump";
+
 const quickstart = `# 1) Create an agent keypair
 clawdrive keys create seller-agent
 
@@ -41,6 +44,9 @@ export default function DocsPage() {
             <a href="#quickstart">Quickstart</a>
             <a href="#model">Security Model</a>
             <a href="#roadmap">Roadmap</a>
+            <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+              GitHub
+            </a>
           </nav>
         </header>
 
@@ -152,6 +158,11 @@ export default function DocsPage() {
 
         <footer className={styles.footer}>
           <a href="/">Back to landing</a>
+          {" · "}
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <div className={styles.contactLine}>CA: {CONTACT_ADDRESS}</div>
         </footer>
       </div>
     </main>

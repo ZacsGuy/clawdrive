@@ -170,6 +170,13 @@
   text-decoration: none;
 }
 
+.contactLine {
+  margin-top: 0.45rem;
+  color: #475569;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
 @media (max-width: 760px) {
   .top {
     flex-direction: column;

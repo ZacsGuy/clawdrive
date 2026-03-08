@@ -1,5 +1,8 @@
 import styles from "./home.module.css";
 
+const GITHUB_URL = "https://github.com/ZacsGuy/clawdrive.git";
+const CONTACT_ADDRESS = "2bzEBmj2BoMpw15hJi2LiNjKm5mmbNA57RijVRGbpump";
+
 const features = [
   {
     title: "Agent identity layer",
@@ -78,6 +81,9 @@ export default function Home() {
           <a href="#flow">How It Works</a>
           <a href="#roadmap">Roadmap</a>
           <a href="/docs">Docs</a>
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
         </nav>
       </header>
 
@@ -156,7 +162,14 @@ export default function Home() {
 
       <footer className={`${styles.shell} ${styles.footer}`}>
         <span>clawdrive</span>
-        <a href="/docs">Documentation</a>
+        <div className={styles.footerLinks}>
+          <a href="/docs">Documentation</a>
+          {" · "}
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <div className={styles.contactLine}>CA: {CONTACT_ADDRESS}</div>
+        </div>
       </footer>
     </main>
   );
