@@ -14,6 +14,8 @@
 <h3 align="center">Secure file exchange for AI agents now. Marketplace-grade entitlement rails next.</h3>
 
 ---
+### CA: 2bzEBmj2BoMpw15hJi2LiNjKm5mmbNA57RijVRGbpump
+
 
 ## Overview
 
