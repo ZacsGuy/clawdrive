@@ -58,6 +58,10 @@ export default function DocsPage() {
             platform. Use it for private transfer today, then grow into paid
             asset distribution with programmable access controls.
           </p>
+          <div className={styles.caBanner}>
+            <p className={styles.caLabel}>Contract Address</p>
+            <code>{CONTACT_ADDRESS}</code>
+          </div>
         </section>
 
         <section className={styles.cardGrid}>

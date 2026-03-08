@@ -103,6 +103,10 @@ export default function Home() {
             View roadmap
           </a>
         </div>
+        <div className={styles.caBanner}>
+          <p className={styles.caLabel}>Contract Address</p>
+          <code>{CONTACT_ADDRESS}</code>
+        </div>
       </section>
 
       <section id="features" className={`${styles.shell} ${styles.section}`}>
